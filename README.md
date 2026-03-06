@@ -1,230 +1,115 @@
-# DevOps CI/CD Pipeline Project
+# Containerized CI/CD Pipeline with Jenkins, Docker & GitHub Webhooks
 
-A containerized CI/CD pipeline that automatically tests, builds, and pushes a Python Flask application using Git, Docker, and Jenkins.
+An end-to-end CI/CD pipeline that automatically tests, builds, containerizes, and deploys a Python Flask application whenever code is pushed to GitHub. Built on a DigitalOcean cloud server running Ubuntu 24.04.
+
+## Architecture
+
+```
+┌──────────┐       webhook        ┌──────────────────────────────────────┐
+│  GitHub   │ ──────────────────► │  Jenkins (DigitalOcean Droplet)      │
+│  (repo)   │                     │                                      │
+└──────────┘                      │  1. Checkout   ── Pull latest code   │
+                                  │  2. Test       ── Run pytest suite   │
+                                  │  3. Build      ── docker build       │
+                                  │  4. Push       ── docker push        │
+                                  │  5. Deploy     ── docker run         │
+                                  └──────────────┬───────────────────────┘
+                                                 │
+                                  ┌──────────────▼───────────────────────┐
+                                  │  Docker Hub                          │
+                                  │  mqcuong1603/devops-pipeline-app     │
+                                  └──────────────────────────────────────┘
+```
+
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| Application | Python 3, Flask | Lightweight REST API with health check endpoint |
+| Testing | pytest | Unit tests run automatically before every build |
+| Containerization | Docker | Application packaged as a portable image |
+| CI/CD Engine | Jenkins (Declarative Pipeline) | Orchestrates the full build-test-deploy workflow |
+| Registry | Docker Hub | Stores versioned Docker images |
+| Infrastructure | DigitalOcean (Ubuntu 24.04) | Cloud server hosting Jenkins and the deployed app |
+| Version Control | Git + GitHub Webhooks | Triggers pipeline automatically on every push |
+
+## How It Works
+
+Every `git push` to the `main` branch triggers the full pipeline automatically via a GitHub webhook. Jenkins pulls the latest code, runs the test suite, builds a Docker image tagged with the Jenkins build number, pushes it to Docker Hub, then stops any existing container and deploys the new version — all without manual intervention.
+
+The Dockerfile uses a multi-step `COPY` strategy to leverage Docker's layer caching: `requirements.txt` is copied and dependencies installed before the application code. This means rebuilds that only change application logic skip the dependency installation step entirely, reducing build time significantly.
+
+Credentials for Docker Hub are stored securely in Jenkins Credential Manager and injected at runtime — no secrets exist in the codebase or version control history.
 
 ## Project Structure
 
 ```
-devops-pipeline-project/
-├── app.py                 # Flask web server (Phase 1)
-├── requirements.txt       # Python dependencies (Phase 1)
+├── app.py                  # Flask application with / and /health endpoints
 ├── tests/
-│   └── test_app.py        # Unit tests for pytest (Phase 1)
-├── .gitignore             # Git ignore rules (Phase 2)
-├── Dockerfile             # Container build instructions (Phase 3)
-├── .dockerignore          # Docker build ignore rules (Phase 3)
-├── Jenkinsfile            # CI/CD pipeline definition (Phase 4)
-└── README.md              # You are here
+│   └── test_app.py         # 4 unit tests covering response codes and payloads
+├── requirements.txt        # Python dependencies (Flask, pytest)
+├── Dockerfile              # Multi-layer build with caching optimization
+├── .dockerignore           # Keeps images lean by excluding dev files
+├── Jenkinsfile             # Declarative pipeline: Checkout → Test → Build → Push → Deploy
+└── .gitignore              # Excludes venvs, caches, IDE files, and .env
 ```
 
----
+## API Endpoints
 
-## Phase 1: Run the Application Locally
+| Endpoint | Method | Response |
+|---|---|---|
+| `/` | GET | `{"message": "Hello from the DevOps Pipeline!", "status": "healthy", "version": "1.0.0"}` |
+| `/health` | GET | `{"status": "ok"}` — used for container health checks |
+
+## Pipeline Stages
+
+**Checkout** — Clones the repository using the SCM configuration in the Jenkins job.
+
+**Test** — Creates a Python virtual environment, installs dependencies, and runs `pytest` with verbose output. If any test fails, the pipeline stops immediately (fail fast principle).
+
+**Build** — Builds two Docker images: one tagged with the Jenkins build number (`:5`, `:6`, etc.) for traceability, and one tagged `:latest` for convenience.
+
+**Push** — Authenticates with Docker Hub using credentials stored in Jenkins and pushes both tagged images.
+
+**Deploy** — Stops and removes the previous container (if running), then starts a new container from the freshly built image on port 5000.
+
+## Infrastructure Setup
+
+The server was provisioned as a DigitalOcean droplet (2 GB RAM, 2 CPUs, Ubuntu 24.04) with the following installed directly on the host:
+
+- **Docker Engine** (CE) — installed from Docker's official repository, not the Ubuntu default package
+- **Jenkins** (LTS) — running as a systemd service on port 8080, with the `jenkins` user added to the `docker` group for daemon access
+- **OpenJDK 21** — required runtime for Jenkins
+- **UFW firewall** — configured to allow SSH (22), Jenkins (8080), and the application (5000)
+
+A non-root `deploy` user was created for all operational work, following the principle of least privilege.
+
+## Key Concepts Demonstrated
+
+- **Continuous Integration** — automated testing on every commit ensures broken code never gets packaged
+- **Continuous Deployment** — zero-touch deployment from code push to live application
+- **Infrastructure as Code** — the entire pipeline is defined in the `Jenkinsfile`, versioned alongside application code
+- **Containerization** — the application runs identically on any machine that has Docker
+- **Layer caching** — Dockerfile structured to minimize rebuild time
+- **Secret management** — Docker Hub credentials stored in Jenkins, never in source code
+- **Webhook-driven automation** — GitHub push events trigger the pipeline with no polling or manual intervention
+- **Immutable deployments** — each build produces a uniquely tagged image; rollback is as simple as redeploying a previous tag
+
+## Running Locally
 
 ```bash
-# Create and activate a virtual environment
+# Clone the repo
+git clone https://github.com/mqcuong1603/devops-pipeline-project.git
+cd devops-pipeline-project
+
+# Run tests
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
-
-# Run the app
-python app.py
-
-# Test it (in another terminal)
-curl http://localhost:5000
-curl http://localhost:5000/health
-
-# Run the unit tests
 python -m pytest tests/ -v
-```
 
-You should see 4 tests pass. If they do, Phase 1 is complete.
-
----
-
-## Phase 2: Set Up Git
-
-```bash
-# Initialize the repo
-cd devops-pipeline-project
-git init
-
-# Stage all files
-git add .
-
-# First commit
-git commit -m "Initial commit: Flask app with tests"
-
-# Connect to your remote repo (create one on GitHub first)
-git remote add origin https://github.com/YOUR_USERNAME/devops-pipeline-project.git
-
-# Push
-git branch -M main
-git push -u origin main
-```
-
----
-
-## Phase 3: Build and Run with Docker
-
-```bash
-# Build the Docker image
-docker build -t devops-pipeline-app:latest .
-
-# Run it as a container
-# -d = detached (runs in background)
-# -p 5000:5000 = map host port 5000 to container port 5000
-docker run -d -p 5000:5000 --name my-app devops-pipeline-app:latest
-
-# Test it
+# Build and run with Docker
+docker build -t devops-pipeline-app .
+docker run -d -p 5000:5000 devops-pipeline-app
 curl http://localhost:5000
-
-# View running containers
-docker ps
-
-# View container logs
-docker logs my-app
-
-# Stop and remove the container
-docker stop my-app
-docker rm my-app
 ```
-
-### Useful Docker Commands to Know
-
-| Command | What it does |
-|---|---|
-| `docker images` | List all local images |
-| `docker ps` | List running containers |
-| `docker ps -a` | List ALL containers (including stopped) |
-| `docker logs <name>` | View container output |
-| `docker exec -it <name> bash` | Open a shell inside a running container |
-| `docker system prune` | Clean up unused images/containers |
-
----
-
-## Phase 4: Set Up Jenkins
-
-### Option A: Run Jenkins in Docker (Recommended for learning)
-
-```bash
-# Create a Docker network so Jenkins can talk to other containers
-docker network create jenkins
-
-# Run Jenkins with Docker-in-Docker support
-docker run -d \
-  --name jenkins \
-  --network jenkins \
-  -p 8080:8080 \
-  -p 50000:50000 \
-  -v jenkins_home:/var/jenkins_home \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  jenkins/jenkins:lts
-
-# Get the initial admin password
-docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
-```
-
-Then open http://localhost:8080 and paste that password.
-
-### Option B: Install Jenkins directly on Linux
-
-```bash
-# Add Jenkins repo and install
-sudo apt update
-sudo apt install -y openjdk-17-jdk
-curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null
-echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/ | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null
-sudo apt update
-sudo apt install -y jenkins
-sudo systemctl start jenkins
-```
-
-### Configure Jenkins
-
-1. **Install Plugins**: Go to Manage Jenkins → Plugins → Install:
-   - Git plugin
-   - Docker Pipeline plugin
-   - Pipeline plugin (usually pre-installed)
-
-2. **Add Docker Hub Credentials**:
-   - Go to: Manage Jenkins → Credentials → System → Global credentials
-   - Click "Add Credentials"
-   - Kind: Username with password
-   - ID: `dockerhub-credentials` (must match the Jenkinsfile)
-   - Username: your Docker Hub username
-   - Password: your Docker Hub password or access token
-
-3. **Create the Pipeline Job**:
-   - New Item → Enter name → Select "Pipeline" → OK
-   - Under Pipeline section:
-     - Definition: "Pipeline script from SCM"
-     - SCM: Git
-     - Repository URL: your GitHub repo URL
-     - Branch: `*/main`
-   - Save and click "Build Now"
-
-4. **(Optional) Set Up a Webhook**:
-   - In GitHub: Settings → Webhooks → Add webhook
-   - Payload URL: `http://YOUR_JENKINS_URL/github-webhook/`
-   - Content type: `application/json`
-   - Events: Just the push event
-   - Now Jenkins triggers automatically when you push code!
-
----
-
-## How It All Connects
-
-```
-Developer pushes code to GitHub
-         │
-         ▼
-GitHub webhook triggers Jenkins
-         │
-         ▼
-┌─────────────────────────────┐
-│  JENKINS PIPELINE           │
-│                             │
-│  1. Checkout  ─ Pull code   │
-│  2. Test      ─ Run pytest  │
-│  3. Build     ─ docker build│
-│  4. Push      ─ docker push │
-└─────────────────────────────┘
-         │
-         ▼
-Docker image available on Docker Hub
-(ready to be pulled and deployed anywhere)
-```
-
----
-
-## Troubleshooting
-
-**"Permission denied" when Jenkins runs Docker commands:**
-```bash
-# Add the jenkins user to the docker group
-sudo usermod -aG docker jenkins
-sudo systemctl restart jenkins
-```
-
-**Tests fail in Jenkins but pass locally:**
-- Check that Jenkins has Python 3 installed
-- The Jenkinsfile creates a virtual environment to isolate dependencies
-
-**Docker build fails with "no space left on device":**
-```bash
-docker system prune -a   # WARNING: removes all unused images
-```
-
----
-
-## What You've Learned
-
-| Phase | Skill | Why It Matters |
-|---|---|---|
-| 1 | Python Flask, pytest, requirements.txt | Every pipeline needs an application to deploy |
-| 2 | Git, .gitignore, remote repos | Version control is the trigger for CI/CD |
-| 3 | Docker, Dockerfile, image layers | Containers make deployments reproducible |
-| 4 | Jenkins, Jenkinsfile, credentials | Automation eliminates manual error |
