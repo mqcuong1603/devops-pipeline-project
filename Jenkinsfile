@@ -21,7 +21,7 @@ pipeline {
     // credentials('dockerhub-credentials') pulls the username/password
     // you stored in Jenkins Credentials Manager (set this up in Jenkins UI).
     environment {
-        DOCKER_IMAGE = 'yourdockerhubusername/devops-pipeline-app'
+        DOCKER_IMAGE = 'mqcuong1603/devops-pipeline-app'
         DOCKER_TAG   = "${BUILD_NUMBER}"  // Jenkins auto-increments this
         REGISTRY_CREDENTIALS = credentials('dockerhub-credentials')
     }
