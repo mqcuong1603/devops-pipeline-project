@@ -1,16 +1,3 @@
-/*
- * ==============================================================
- * Phase 4: Jenkinsfile (Declarative Pipeline)
- *
- * This file lives IN your Git repo alongside your code.
- * Jenkins reads it and executes each stage in order.
- * If any stage fails, the pipeline stops and you get notified.
- *
- * PIPELINE FLOW:
- *   Checkout → Test → Build Docker Image → Push to Docker Hub
- * ==============================================================
- */
-
 pipeline {
     // 'any' means this can run on any available Jenkins agent.
     // In production, you might specify a label like 'docker' to
@@ -53,15 +40,15 @@ pipeline {
         stage('Test') {
             steps {
                 sh '''
-                    echo "🧪 Setting up Python virtual environment..."
+                    echo " Setting up Python virtual environment..."
                     python3 -m venv .venv
                     . .venv/bin/activate
                     pip install -r requirements.txt
 
-                    echo "🧪 Running unit tests..."
+                    echo " Running unit tests..."
                     python -m pytest tests/ -v --tb=short
                 '''
-                echo "✅ All tests passed"
+                echo " All tests passed"
             }
         }
 
@@ -78,11 +65,11 @@ pipeline {
         stage('Build') {
             steps {
                 sh '''
-                    echo "🐳 Building Docker image..."
+                    echo " Building Docker image..."
                     docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
                     docker build -t ${DOCKER_IMAGE}:latest .
                 '''
-                echo "✅ Docker image built: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                echo " Docker image built: ${DOCKER_IMAGE}:${DOCKER_TAG}"
             }
         }
 
@@ -100,14 +87,14 @@ pipeline {
         stage('Push') {
             steps {
                 sh '''
-                    echo "📦 Logging into Docker Hub..."
+                    echo " Logging into Docker Hub..."
                     echo $REGISTRY_CREDENTIALS_PSW | docker login -u $REGISTRY_CREDENTIALS_USR --password-stdin
 
-                    echo "📦 Pushing image to Docker Hub..."
+                    echo " Pushing image to Docker Hub..."
                     docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
                     docker push ${DOCKER_IMAGE}:latest
                 '''
-                echo "✅ Image pushed to Docker Hub"
+                echo " Image pushed to Docker Hub"
             }
         }
     }
@@ -121,14 +108,14 @@ pipeline {
         always {
             // Clean up workspace to save disk space on the Jenkins server
             cleanWs()
-            echo "🧹 Workspace cleaned"
+            echo " Workspace cleaned"
         }
         success {
-            echo "🎉 Pipeline completed successfully!"
-            echo "📦 Image available at: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+            echo " Pipeline completed successfully!"
+            echo " Image available at: ${DOCKER_IMAGE}:${DOCKER_TAG}"
         }
         failure {
-            echo "❌ Pipeline failed. Check the logs above for errors."
+            echo " Pipeline failed. Check the logs above for errors."
             // In production, you'd add Slack/email notifications here:
             // slackSend channel: '#devops', message: "Build ${BUILD_NUMBER} failed!"
         }
