@@ -1,0 +1,33 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ===== OS =====
+.DS_Store
+Thumbs.db
+
+# ===== Docker =====
+# Don't commit local Docker overrides
+docker-compose.override.yml
+
+# ===== Jenkins =====
+# Jenkins workspace artifacts (if running locally)
+*.log
+
+# ===== Environment =====
+# NEVER commit secrets or env files to Git
+.env
+.env.local

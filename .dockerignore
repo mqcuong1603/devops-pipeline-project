@@ -1,0 +1,16 @@
+# .dockerignore works like .gitignore but for Docker builds.
+# Files listed here are NOT sent to the Docker daemon during `docker build`.
+# This makes builds faster and images smaller.
+
+.git
+.gitignore
+__pycache__
+*.pyc
+.venv
+venv
+.env
+.idea
+.vscode
+Jenkinsfile
+README.md
+docker-compose.override.yml
